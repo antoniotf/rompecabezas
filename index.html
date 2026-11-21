@@ -2,10 +2,21 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="app-version" content="V06">
+<meta name="app-version" content="V07">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
+<script>
+/* Anti-caché: cada vez que se abre, se carga con una URL única (?t=...) para obligar al navegador a pedir el archivo al servidor. */
+(function(){try{
+  if(!/^https?:$/.test(location.protocol))return;
+  var p=new URLSearchParams(location.search),t=parseInt(p.get('t'),10),now=Date.now();
+  if(t&&now>=t&&now-t<60000)return;            // ya es una carga fresca
+  document.documentElement.style.visibility='hidden';
+  p.delete('v');p.set('t',now);
+  location.replace(location.pathname+'?'+p.toString()+location.hash);
+}catch(e){}})();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#17212b">
 <title>Rompecabezas 3 × 4</title>
@@ -77,19 +88,6 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
   // ---- Versión y anti-caché ----
   const APP_VERSION=(document.querySelector('meta[name="app-version"]')||{}).content||'V??';
   document.getElementById('version').textContent=APP_VERSION;
-  // Pide al servidor la cabecera del archivo sin usar caché; si hay una versión distinta, recarga con ?v=.
-  (async()=>{
-    if(!/^https?:$/.test(location.protocol)||!navigator.onLine)return;
-    try{
-      const base=location.href.split('#')[0].split('?')[0];
-      const res=await fetch(base+'?_='+Date.now(),{cache:'no-store',headers:{'Range':'bytes=0-2047'}});
-      const head=(await res.text()).slice(0,4096);
-      const m=head.match(/name="app-version"\s+content="([^"]+)"/);
-      if(!m||m[1]===APP_VERSION)return;
-      if(new URLSearchParams(location.search).get('v')===m[1])return; // evita bucles
-      location.replace(base+'?v='+encodeURIComponent(m[1]));
-    }catch(e){}
-  })();
   // Efectos retro sintetizados con Web Audio: no necesita archivos externos.
   let soundEnabled = true;
   let audioContext = null;
@@ -118,7 +116,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
   // ---- Música de fondo: bucle chiptune original (onda cuadrada + bajo triangular) ----
   // Notas en semitonos respecto a La4 (440 Hz); null = silencio. 8 pasos (corcheas) por compás, 4 compases.
   const MUSIC_STEP_START = 0.36;      // segundos por paso al empezar (muy lento)
-  const MUSIC_STEP_END = 0.01;        // segundos por paso al llegar al tempo máximo
+  const MUSIC_STEP_END = 0.05;        // segundos por paso al llegar al tempo máximo
   const MUSIC_RAMP = 100;             // segundos de música hasta alcanzar el tempo máximo
   let musicElapsed = 0;               // segundos de música sonados en esta partida
   const musicStepNow = () => MUSIC_STEP_START - (MUSIC_STEP_START - MUSIC_STEP_END) * Math.min(1, musicElapsed / MUSIC_RAMP);
