@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="app-version" content="V04">
+<meta name="app-version" content="V05">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -117,7 +117,11 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 
   // ---- Música de fondo: bucle chiptune original (onda cuadrada + bajo triangular) ----
   // Notas en semitonos respecto a La4 (440 Hz); null = silencio. 8 pasos (corcheas) por compás, 4 compases.
-  const MUSIC_STEP = 0.14;            // segundos por paso
+  const MUSIC_STEP_START = 0.36;      // segundos por paso al empezar (muy lento)
+  const MUSIC_STEP_END = 0.11;        // segundos por paso al llegar al tempo máximo
+  const MUSIC_RAMP = 300;             // segundos de música hasta alcanzar el tempo máximo
+  let musicElapsed = 0;               // segundos de música sonados en esta partida
+  const musicStepNow = () => MUSIC_STEP_START - (MUSIC_STEP_START - MUSIC_STEP_END) * Math.min(1, musicElapsed / MUSIC_RAMP);
   const MUSIC_LEAD = [
     5,null,8,null,10,8,5,null,
     7,null,10,null,12,10,7,null,
@@ -144,10 +148,10 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
   function musicTick() {
     const ctx = audioContext; if (!ctx || !musicMaster) return;
     while (musicNext < ctx.currentTime + 0.3) {
-      const i = musicStep % MUSIC_LEAD.length;
-      if (MUSIC_LEAD[i] !== null) musicNote(ctx, musicMaster, MUSIC_LEAD[i], musicNext, MUSIC_STEP * 0.75, 'square', 0.05);
-      if (MUSIC_BASS[i] !== null) musicNote(ctx, musicMaster, MUSIC_BASS[i], musicNext, MUSIC_STEP * 1.6, 'triangle', 0.09);
-      musicNext += MUSIC_STEP; musicStep++;
+      const i = musicStep % MUSIC_LEAD.length, step = musicStepNow();
+      if (MUSIC_LEAD[i] !== null) musicNote(ctx, musicMaster, MUSIC_LEAD[i], musicNext, step * 0.75, 'square', 0.05);
+      if (MUSIC_BASS[i] !== null) musicNote(ctx, musicMaster, MUSIC_BASS[i], musicNext, step * 1.6, 'triangle', 0.09);
+      musicNext += step; musicElapsed += step; musicStep++;
     }
   }
   function startMusic() {
@@ -218,7 +222,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 
   function formatTime(s){return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
   function updateStats(){movesEl.textContent=moves;timeEl.textContent=formatTime(seconds)}
-  function startClock(){if(!started){started=true;startMusic();timer=setInterval(()=>{seconds++;timeEl.textContent=formatTime(seconds)},1000)}}
+  function startClock(){if(!started){started=true;musicElapsed=0;startMusic();timer=setInterval(()=>{seconds++;timeEl.textContent=formatTime(seconds)},1000)}}
   function stopClock(){stopMusic();if(timer){clearInterval(timer);timer=null}}
   function neighbors(index){
     const r=Math.floor(index/COLS),c=index%COLS,out=[];
