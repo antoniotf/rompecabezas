@@ -27,7 +27,7 @@ h1{font-size:clamp(1.45rem,5vw,1.9rem);margin:0 0 5px;letter-spacing:.2px}
 #message{min-height:24px;text-align:center;color:var(--accent);font-weight:650;margin:12px 0 4px}
 .controls{display:grid;grid-template-columns:1fr 1fr;gap:9px;max-width:420px;margin:12px auto 0}
 button,.file-label{font:inherit;border:1px solid #405563;border-radius:12px;background:var(--panel2);color:var(--text);padding:12px 10px;min-height:46px;font-weight:650;text-align:center;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px}
-button.primary{background:var(--accent);border-color:var(--accent);color:#10221f}
+button.primary{grid-column:1/-1;background:var(--accent);border-color:var(--accent);color:#10221f}
 button:active,.file-label:active{transform:scale(.98)}
 button:disabled{opacity:.45;cursor:default}
 .file-label{grid-column:1/-1;background:var(--panel);border-style:dashed}
@@ -58,15 +58,13 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 <div id="message" aria-live="polite"></div>
 
 <div class="controls">
-<button class="primary" id="shuffle" type="button">↻ Mezclar</button>
 <button id="hint" type="button">▧ Ver imagen</button>
 <button id="sound" type="button" aria-pressed="true">♫ Sonido: ON</button>
-<button id="reset" type="button">Reiniciar</button>
 <label class="file-label" for="photo">＋ Elegir fotografía del móvil</label>
 <input id="photo" type="file" accept="image/*">
-<button id="newGame" type="button">Nueva partida</button>
+<button class="primary" id="newGame" type="button">Nueva partida</button>
 </div>
-<p class="note">Tablero fijo de 3 columnas × 4 filas. Las 12 casillas son cuadradas: 11 fichas y un hueco. Solo puedes mover una ficha que esté junto al hueco. Tus fotografías se recortan al formato del tablero y no se envían a ningún servidor. «Nueva partida» carga una fotografía aleatoria de la carpeta imagenes de este repositorio de GitHub.</p>
+<p class="note">Desliza las fichas que estén junto al hueco. Tus fotografías se recortan al formato del tablero y no se envían a ningún servidor.</p>
 </main>
 <script>
 (() => {
@@ -136,7 +134,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
   const photoInput=document.getElementById('photo');
   const preview=document.getElementById('preview');
   const previewImage=document.getElementById('previewImage');
-  let state=SOLVED.slice(), moves=0, seconds=0, timer=null, started=false, imageUrl='';
+  let state=SOLVED.slice(), moves=0, seconds=0, timer=null, started=false, finished=false, imageUrl='';
   let bestImageName='';
 
   // Imagen de demostración integrada: no necesita conexión.
@@ -173,6 +171,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     });
   }
   function tryMove(index){
+    if(finished)return;
     const empty=state.indexOf(0);
     if(!neighbors(empty).includes(index))return;
     startClock();
@@ -180,12 +179,12 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     [state[index],state[empty]]=[state[empty],state[index]];
     moves++;updateStats();render();
     if(isSolved()){
-      stopClock();sfxWin();messageEl.textContent=`¡Conseguido! ${moves} movimientos en ${formatTime(seconds)}.`;
+      finished=true;stopClock();sfxWin();messageEl.textContent=`¡Conseguido! ${moves} movimientos en ${formatTime(seconds)}.`;
     }else messageEl.textContent='';
   }
   function isSolved(){return state.every((v,i)=>v===SOLVED[i])}
   function shuffle(silent){
-    stopClock();state=SOLVED.slice();moves=0;seconds=0;started=false;updateStats();
+    stopClock();state=SOLVED.slice();moves=0;seconds=0;started=false;finished=false;updateStats();
     let previous=-1;
     // Mezcla mediante movimientos legales desde la solución: siempre es resoluble.
     for(let i=0;i<140;i++){
@@ -199,10 +198,6 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     if(isSolved())shuffle(silent);
     render();if(silent!==true)sfxShuffle();messageEl.textContent='¡A jugar! Desliza una ficha junto al hueco.';
   }
-  function reset(){
-    stopClock();state=SOLVED.slice();moves=0;seconds=0;started=false;updateStats();render();
-    messageEl.textContent='Tablero resuelto. Pulsa «Mezclar» para empezar.';
-  }
   document.getElementById('sound').addEventListener('click',()=>{
     soundEnabled=!soundEnabled;
     const btn=document.getElementById('sound');
@@ -210,9 +205,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     btn.setAttribute('aria-pressed',String(soundEnabled));
     if(soundEnabled)sfxClick();
   });
-  document.getElementById('shuffle').addEventListener('click',shuffle);
-  document.getElementById('reset').addEventListener('click',reset);
-  document.getElementById('newGame').addEventListener('click',newGameFromGithub);
+      document.getElementById('newGame').addEventListener('click',newGameFromGithub);
   document.getElementById('hint').addEventListener('click',()=>{sfxClick();preview.style.display='flex'});
   document.getElementById('closePreview').addEventListener('click',()=>{sfxClick();preview.style.display='none'});
   preview.addEventListener('click',e=>{if(e.target===preview)preview.style.display='none'});
@@ -245,6 +238,26 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
   const GITHUB_BRANCH='main';
   const GITHUB_IMAGE_FOLDER='imagenes';
   let githubFiles=null, githubBusy=false;
+
+  function loadImageCors(url){
+    return new Promise((resolve,reject)=>{
+      const img=new Image();
+      img.crossOrigin='anonymous';
+      img.onload=()=>resolve(img);
+      img.onerror=()=>reject(new Error('no se pudo abrir '+url));
+      img.src=url;
+    });
+  }
+  function cropToDataUrl(img){
+    // Recorte central 3:4 a 900×1200 para que las 12 casillas resulten cuadradas.
+    const targetRatio=COLS/ROWS, sourceRatio=img.width/img.height;
+    let sx=0,sy=0,sw=img.width,sh=img.height;
+    if(sourceRatio>targetRatio){sw=img.height*targetRatio;sx=(img.width-sw)/2}
+    else{sh=img.width/targetRatio;sy=(img.height-sh)/2}
+    const canvas=document.createElement('canvas');canvas.width=900;canvas.height=1200;
+    canvas.getContext('2d').drawImage(img,sx,sy,sw,sh,0,0,900,1200);
+    return canvas.toDataURL('image/jpeg',.9);
+  }
 
   async function listGithubImages(){
     if(githubFiles)return githubFiles;
