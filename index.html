@@ -66,7 +66,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 <input id="photo" type="file" accept="image/*">
 <button id="newGame" type="button">Nueva partida</button>
 </div>
-<p class="note">Tablero fijo de 3 columnas × 4 filas. Las 12 casillas son cuadradas: 11 fichas y un hueco. Solo puedes mover una ficha que esté junto al hueco. Tus fotografías se recortan al formato del tablero y no se envían a ningún servidor. «Nueva partida» carga una foto al azar de tu carpeta de Google Drive.</p>
+<p class="note">Tablero fijo de 3 columnas × 4 filas. Las 12 casillas son cuadradas: 11 fichas y un hueco. Solo puedes mover una ficha que esté junto al hueco. Tus fotografías se recortan al formato del tablero y no se envían a ningún servidor. «Nueva partida» carga una fotografía aleatoria de la carpeta imagenes de este repositorio de GitHub.</p>
 </main>
 <script>
 (() => {
@@ -212,7 +212,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
   });
   document.getElementById('shuffle').addEventListener('click',shuffle);
   document.getElementById('reset').addEventListener('click',reset);
-  document.getElementById('newGame').addEventListener('click',newGameFromDrive);
+  document.getElementById('newGame').addEventListener('click',newGameFromGithub);
   document.getElementById('hint').addEventListener('click',()=>{sfxClick();preview.style.display='flex'});
   document.getElementById('closePreview').addEventListener('click',()=>{sfxClick();preview.style.display='none'});
   preview.addEventListener('click',e=>{if(e.target===preview)preview.style.display='none'});
@@ -238,95 +238,96 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     };
     reader.readAsDataURL(file);
   });
-  // ---- Fotos desde Google Drive (carpeta compartida con "cualquiera con el enlace") ----
-  const DRIVE_API_KEY='AIzaSyB973iMuLxqdWulg_JYx-8XH6bixQP7_7g';
-  const DRIVE_FOLDER_ID='1aGpChtAseuMAhXX-B7QcGhWYueHckeOA';
-  let driveFiles=null, driveBusy=false, lastDriveId='';
+  // ---- Fotos desde la carpeta imagenes de este repositorio de GitHub ----
+  // Repositorio público: antoniotf/rompecabezas, rama main.
+  const GITHUB_OWNER='antoniotf';
+  const GITHUB_REPO='rompecabezas';
+  const GITHUB_BRANCH='main';
+  const GITHUB_IMAGE_FOLDER='imagenes';
+  let githubFiles=null, githubBusy=false;
 
-  async function listDriveImages(){
-    if(driveFiles)return driveFiles;
-    const q="'"+DRIVE_FOLDER_ID+"' in parents and mimeType contains 'image/' and trashed=false";
-    const url='https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(q)
-      +'&fields='+encodeURIComponent('files(id,name)')+'&pageSize=1000&key='+DRIVE_API_KEY;
-    let r;
-    try{r=await fetch(url)}catch(e){throw new Error('lista: '+e.message+' ['+location.protocol+']')}
-    if(!r.ok)throw new Error('lista: Drive '+r.status);
-    const data=await r.json();
-    driveFiles=data.files||[];
-    return driveFiles;
-  }
-  function loadImageFromBlob(blob){
-    return new Promise((resolve,reject)=>{
-      const u=URL.createObjectURL(blob), img=new Image();
-      img.onload=()=>{URL.revokeObjectURL(u);resolve(img)};
-      img.onerror=()=>{URL.revokeObjectURL(u);reject(new Error('imagen no válida'))};
-      img.src=u;
+  async function listGithubImages(){
+    if(githubFiles)return githubFiles;
+    const endpoint=`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_IMAGE_FOLDER}?ref=${GITHUB_BRANCH}`;
+    const response=await fetch(endpoint,{
+      headers:{'Accept':'application/vnd.github+json'}
     });
+    if(!response.ok){
+      if(response.status===404)throw new Error('no existe la carpeta imagenes o está vacía');
+      if(response.status===403)throw new Error('límite temporal de consultas de GitHub alcanzado');
+      throw new Error('GitHub '+response.status);
+    }
+    const entries=await response.json();
+    const extensions=/\.(jpe?g|png|webp|gif|avif)$/i;
+    githubFiles=entries
+      .filter(item=>item.type==='file'&&extensions.test(item.name))
+      .map(item=>({name:item.name,url:item.download_url||`https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${GITHUB_IMAGE_FOLDER}/${item.name}`,id:item.sha}));
+    return githubFiles;
   }
-  function loadImageCors(url){
-    return new Promise((resolve,reject)=>{
-      const img=new Image();img.crossOrigin='anonymous';
-      img.onload=()=>resolve(img);
-      img.onerror=()=>reject(new Error('no se pudo cargar'));
-      img.src=url;
-    });
+
+  // Evita repetir fotos hasta completar una vuelta por todas las imágenes disponibles.
+  const SHOWN_KEY='rompecabezas_github_vistas';
+  let shownIds=[];
+  try{shownIds=JSON.parse(localStorage.getItem(SHOWN_KEY)||'[]')}catch(e){shownIds=[]}
+  function saveShown(){try{localStorage.setItem(SHOWN_KEY,JSON.stringify(shownIds))}catch(e){}}
+  function markShown(id){if(!shownIds.includes(id))shownIds.push(id);saveShown()}
+  function pickNextGithubFile(files,tried){
+    const ids=new Set(files.map(f=>f.id));
+    shownIds=shownIds.filter(id=>ids.has(id));
+    let pool=files.filter(f=>!shownIds.includes(f.id)&&!tried.includes(f.id));
+    if(!pool.length){
+      const last=shownIds[shownIds.length-1];
+      shownIds=last?[last]:[];saveShown();
+      pool=files.filter(f=>!shownIds.includes(f.id)&&!tried.includes(f.id));
+      if(!pool.length)pool=files.filter(f=>!tried.includes(f.id));
+    }
+    return pool[Math.floor(Math.random()*pool.length)];
   }
-  function cropToDataUrl(img){
-    // Recorte central 3:4 para que las 12 fichas resulten cuadradas.
-    const targetRatio=COLS/ROWS, sourceRatio=img.width/img.height;
-    let sx=0,sy=0,sw=img.width,sh=img.height;
-    if(sourceRatio>targetRatio){sw=img.height*targetRatio;sx=(img.width-sw)/2}
-    else{sh=img.width/targetRatio;sy=(img.height-sh)/2}
-    const canvas=document.createElement('canvas');canvas.width=900;canvas.height=1200;
-    canvas.getContext('2d').drawImage(img,sx,sy,sw,sh,0,0,900,1200);
-    return canvas.toDataURL('image/jpeg',.9);
-  }
-  async function fetchRandomDriveImage(){
-    const files=await listDriveImages();
-    if(!files.length)throw new Error('carpeta vacía');
-    for(let attempt=0;attempt<4;attempt++){
-      const pool=files.length>1?files.filter(f=>f.id!==lastDriveId):files;
-      const f=pool[Math.floor(Math.random()*pool.length)];
+  async function fetchRandomGithubImage(){
+    const files=await listGithubImages();
+    if(!files.length)throw new Error('no hay imágenes JPG, PNG, WEBP, GIF o AVIF en imagenes');
+    const tried=[];
+    for(let attempt=0;attempt<Math.min(5,files.length);attempt++){
+      const file=pickNextGithubFile(files,tried);
+      if(!file)break;
+      tried.push(file.id);
       try{
-        let img;
-        try{
-          const r=await fetch('https://www.googleapis.com/drive/v3/files/'+f.id+'?alt=media&key='+DRIVE_API_KEY);
-          if(!r.ok)throw new Error('Drive '+r.status);
-          img=await loadImageFromBlob(await r.blob());
-        }catch(e1){
-          // Plan B: miniatura grande de Drive cargada como imagen (no depende de fetch).
-          try{img=await loadImageCors('https://drive.google.com/thumbnail?id='+f.id+'&sz=w1600')}
-          catch(e2){throw new Error('descarga: '+e1.message+' / miniatura: '+e2.message+' ['+location.protocol+']')}
-        }
-        lastDriveId=f.id;
-        return {url:cropToDataUrl(img),name:f.name};
-      }catch(e){if(attempt===3)throw e}
+        const img=await loadImageCors(file.url);
+        return {url:cropToDataUrl(img),name:file.name,id:file.id};
+      }catch(error){
+        console.warn('No se pudo cargar '+file.name,error);
+      }
     }
+    throw new Error('no se pudo cargar ninguna de las imágenes de GitHub');
   }
-  async function newGameFromDrive(){
-    if(driveBusy)return;
-    driveBusy=true;
-    messageEl.textContent='Cargando foto de Drive…';
+  async function newGameFromGithub(){
+    if(githubBusy)return;
+    githubBusy=true;
+    const button=document.getElementById('newGame');
+    button.disabled=true;
+    messageEl.textContent='Cargando fotografía de GitHub…';
     try{
-      const p=await fetchRandomDriveImage();
-      imageUrl=p.url;previewImage.src=imageUrl;bestImageName=p.name;
+      const photo=await fetchRandomGithubImage();
+      imageUrl=photo.url;previewImage.src=imageUrl;bestImageName=photo.name;markShown(photo.id);
       shuffle();
-    }catch(e){
-      console.warn(e);
-      shuffle();
-      messageEl.textContent='No se pudo cargar de Drive ('+e.message+'). Se usa la foto actual.';
+      messageEl.textContent='Nueva fotografía: '+photo.name+' ¡A jugar!';
+    }catch(error){
+      console.warn(error);
+      messageEl.textContent='No se pudo cargar una foto de GitHub: '+error.message;
+    }finally{
+      githubBusy=false;
+      button.disabled=false;
     }
-    driveBusy=false;
   }
 
   // Al abrir la página, el puzzle ya empieza mezclado (sin sonido, el navegador lo bloquea hasta el primer toque).
   shuffle(true);
-  // Al arrancar se usa la foto integrada y, si hay conexión, se cambia por una al azar de Drive (solo si aún no has movido nada).
+  // Al abrir, intenta cargar una foto aleatoria de GitHub. Si falla, conserva la imagen integrada.
   (async()=>{
     try{
-      const p=await fetchRandomDriveImage();
-      if(!started&&moves===0){imageUrl=p.url;previewImage.src=imageUrl;bestImageName=p.name;render()}
-    }catch(e){console.warn('Drive:',e)}
+      const p=await fetchRandomGithubImage();
+      if(!started&&moves===0){imageUrl=p.url;previewImage.src=imageUrl;bestImageName=p.name;markShown(p.id);render()}
+    }catch(e){console.warn('GitHub:',e);messageEl.textContent='No se pudo cargar la carpeta imagenes de GitHub. Se mantiene la foto de ejemplo.'}
   })();
 })();
 </script>
