@@ -2,6 +2,10 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
+<meta name="app-version" content="V03">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#17212b">
 <title>Rompecabezas 3 × 4</title>
@@ -37,6 +41,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 #preview img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px}
 #preview button{position:absolute;right:10px;top:10px;min-height:38px;padding:7px 12px}
 @media(min-height:850px){main{padding-top:30px}.stats{margin-top:20px;margin-bottom:18px}}
+.version{text-align:center;color:var(--muted);opacity:.55;font-size:.62rem;margin:10px 0 0;letter-spacing:.08em}
 </style>
 </head>
 <body>
@@ -65,9 +70,26 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 <button class="primary" id="newGame" type="button">Nueva partida</button>
 </div>
 <p class="note">Desliza las fichas que estén junto al hueco. Tus fotografías se recortan al formato del tablero y no se envían a ningún servidor.</p>
+<p class="version" id="version"></p>
 </main>
 <script>
 (() => {
+  // ---- Versión y anti-caché ----
+  const APP_VERSION=(document.querySelector('meta[name="app-version"]')||{}).content||'V??';
+  document.getElementById('version').textContent=APP_VERSION;
+  // Pide al servidor la cabecera del archivo sin usar caché; si hay una versión distinta, recarga con ?v=.
+  (async()=>{
+    if(!/^https?:$/.test(location.protocol)||!navigator.onLine)return;
+    try{
+      const base=location.href.split('#')[0].split('?')[0];
+      const res=await fetch(base+'?_='+Date.now(),{cache:'no-store',headers:{'Range':'bytes=0-2047'}});
+      const head=(await res.text()).slice(0,4096);
+      const m=head.match(/name="app-version"\s+content="([^"]+)"/);
+      if(!m||m[1]===APP_VERSION)return;
+      if(new URLSearchParams(location.search).get('v')===m[1])return; // evita bucles
+      location.replace(base+'?v='+encodeURIComponent(m[1]));
+    }catch(e){}
+  })();
   // Efectos retro sintetizados con Web Audio: no necesita archivos externos.
   let soundEnabled = true;
   let audioContext = null;
@@ -185,6 +207,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
   function isSolved(){return state.every((v,i)=>v===SOLVED[i])}
   function shuffle(silent){
     stopClock();state=SOLVED.slice();moves=0;seconds=0;started=false;finished=false;updateStats();
+    preview.style.display='none';
     let previous=-1;
     // Mezcla mediante movimientos legales desde la solución: siempre es resoluble.
     for(let i=0;i<140;i++){
@@ -263,6 +286,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     if(githubFiles)return githubFiles;
     const endpoint=`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_IMAGE_FOLDER}?ref=${GITHUB_BRANCH}`;
     const response=await fetch(endpoint,{
+      cache:'no-store',
       headers:{'Accept':'application/vnd.github+json'}
     });
     if(!response.ok){
@@ -316,6 +340,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
   async function newGameFromGithub(){
     if(githubBusy)return;
     githubBusy=true;
+    preview.style.display='none';
     const button=document.getElementById('newGame');
     button.disabled=true;
     messageEl.textContent='Cargando fotografía de GitHub…';
