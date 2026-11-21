@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="app-version" content="V03">
+<meta name="app-version" content="V04">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -114,6 +114,59 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     osc.connect(gain); gain.connect(ctx.destination);
     osc.start(start); osc.stop(start + duration + 0.015);
   }
+
+  // ---- Música de fondo: bucle chiptune original (onda cuadrada + bajo triangular) ----
+  // Notas en semitonos respecto a La4 (440 Hz); null = silencio. 8 pasos (corcheas) por compás, 4 compases.
+  const MUSIC_STEP = 0.14;            // segundos por paso
+  const MUSIC_LEAD = [
+    5,null,8,null,10,8,5,null,
+    7,null,10,null,12,10,7,null,
+    8,null,12,null,15,12,8,null,
+    12,10,8,7,5,null,null,null
+  ];
+  const MUSIC_BASS = [
+    -19,null,-12,null,-19,null,-12,null,
+    -21,null,-14,null,-21,null,-14,null,
+    -23,null,-16,null,-23,null,-16,null,
+    -24,null,-17,null,-24,null,-17,null
+  ];
+  let musicTimer = null, musicMaster = null, musicStep = 0, musicNext = 0;
+  const noteHz = n => 440 * Math.pow(2, n / 12);
+  function musicNote(ctx, dest, n, when, dur, type, vol) {
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.type = type; osc.frequency.setValueAtTime(noteHz(n), when);
+    gain.gain.setValueAtTime(0.0001, when);
+    gain.gain.linearRampToValueAtTime(vol, when + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    osc.connect(gain); gain.connect(dest);
+    osc.start(when); osc.stop(when + dur + 0.02);
+  }
+  function musicTick() {
+    const ctx = audioContext; if (!ctx || !musicMaster) return;
+    while (musicNext < ctx.currentTime + 0.3) {
+      const i = musicStep % MUSIC_LEAD.length;
+      if (MUSIC_LEAD[i] !== null) musicNote(ctx, musicMaster, MUSIC_LEAD[i], musicNext, MUSIC_STEP * 0.75, 'square', 0.05);
+      if (MUSIC_BASS[i] !== null) musicNote(ctx, musicMaster, MUSIC_BASS[i], musicNext, MUSIC_STEP * 1.6, 'triangle', 0.09);
+      musicNext += MUSIC_STEP; musicStep++;
+    }
+  }
+  function startMusic() {
+    if (musicTimer) return;
+    const ctx = audio(); if (!ctx) return;
+    musicMaster = ctx.createGain(); musicMaster.gain.value = 0.55; musicMaster.connect(ctx.destination);
+    musicStep = 0; musicNext = ctx.currentTime + 0.05;
+    musicTick(); musicTimer = setInterval(musicTick, 60);
+  }
+  function stopMusic() {
+    if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
+    if (musicMaster) {
+      const m = musicMaster; musicMaster = null;
+      try { m.gain.cancelScheduledValues(0); m.gain.setValueAtTime(0, audioContext.currentTime); } catch (_) {}
+      setTimeout(() => { try { m.disconnect(); } catch (_) {} }, 400);
+    }
+  }
+  const musicWanted = () => soundEnabled && started && !finished && !document.hidden;
+  document.addEventListener('visibilitychange', () => { musicWanted() ? startMusic() : stopMusic(); });
   function sfxMove() {
     const ctx = audio(); if (!ctx) return;
     const osc = ctx.createOscillator();
@@ -165,8 +218,8 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 
   function formatTime(s){return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
   function updateStats(){movesEl.textContent=moves;timeEl.textContent=formatTime(seconds)}
-  function startClock(){if(!started){started=true;timer=setInterval(()=>{seconds++;timeEl.textContent=formatTime(seconds)},1000)}}
-  function stopClock(){if(timer){clearInterval(timer);timer=null}}
+  function startClock(){if(!started){started=true;startMusic();timer=setInterval(()=>{seconds++;timeEl.textContent=formatTime(seconds)},1000)}}
+  function stopClock(){stopMusic();if(timer){clearInterval(timer);timer=null}}
   function neighbors(index){
     const r=Math.floor(index/COLS),c=index%COLS,out=[];
     if(r>0)out.push(index-COLS);if(r<ROWS-1)out.push(index+COLS);
@@ -226,7 +279,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     const btn=document.getElementById('sound');
     btn.textContent=soundEnabled?'♫ Sonido: ON':'♫ Sonido: OFF';
     btn.setAttribute('aria-pressed',String(soundEnabled));
-    if(soundEnabled)sfxClick();
+    if(soundEnabled){sfxClick();if(musicWanted())startMusic();}else stopMusic();
   });
       document.getElementById('newGame').addEventListener('click',newGameFromGithub);
   document.getElementById('hint').addEventListener('click',()=>{sfxClick();preview.style.display='flex'});
