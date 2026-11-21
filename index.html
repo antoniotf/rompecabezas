@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="app-version" content="V05">
+<meta name="app-version" content="V06">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -118,8 +118,8 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
   // ---- Música de fondo: bucle chiptune original (onda cuadrada + bajo triangular) ----
   // Notas en semitonos respecto a La4 (440 Hz); null = silencio. 8 pasos (corcheas) por compás, 4 compases.
   const MUSIC_STEP_START = 0.36;      // segundos por paso al empezar (muy lento)
-  const MUSIC_STEP_END = 0.11;        // segundos por paso al llegar al tempo máximo
-  const MUSIC_RAMP = 300;             // segundos de música hasta alcanzar el tempo máximo
+  const MUSIC_STEP_END = 0.01;        // segundos por paso al llegar al tempo máximo
+  const MUSIC_RAMP = 100;             // segundos de música hasta alcanzar el tempo máximo
   let musicElapsed = 0;               // segundos de música sonados en esta partida
   const musicStepNow = () => MUSIC_STEP_START - (MUSIC_STEP_START - MUSIC_STEP_END) * Math.min(1, musicElapsed / MUSIC_RAMP);
   const MUSIC_LEAD = [
