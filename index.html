@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="app-version" content="V08">
+<meta name="app-version" content="V09">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -53,6 +53,8 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 #preview button{position:absolute;right:10px;top:10px;min-height:38px;padding:7px 12px}
 @media(min-height:850px){main{padding-top:30px}.stats{margin-top:20px;margin-bottom:18px}}
 .version{text-align:center;color:var(--muted);opacity:.55;font-size:.62rem;margin:10px 0 0;letter-spacing:.08em}
+.tile.last{animation:lastIn .9s ease-out both;cursor:default}
+@keyframes lastIn{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
 </style>
 </head>
 <body>
@@ -227,15 +229,16 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     boardEl.innerHTML='';
     state.forEach((value,index)=>{
       const tile=document.createElement('button');
-      tile.type='button';tile.className='tile'+(value===0?' empty':'');
+      const lastPiece=value===0&&finished;   // al resolver, el hueco se rellena con la pieza que falta (la última)
+      tile.type='button';tile.className='tile'+(value===0&&!lastPiece?' empty':'')+(lastPiece?' last':'');
       tile.setAttribute('aria-label',value===0?'Hueco':`Pieza ${value}`);
-      if(value!==0){
-        const original=value-1, row=Math.floor(original/COLS), col=original%COLS;
+      if(value!==0||lastPiece){
+        const original=lastPiece?SIZE-1:value-1, row=Math.floor(original/COLS), col=original%COLS;
         tile.style.backgroundImage=`url("${imageUrl}")`;
         tile.style.backgroundSize=`${COLS*100}% ${ROWS*100}%`;
         tile.style.backgroundPosition=`${col/(COLS-1)*100}% ${row/(ROWS-1)*100}%`;
-        const number=document.createElement('span');number.className='number';number.textContent=value;tile.appendChild(number);
-        tile.addEventListener('click',()=>tryMove(index));
+        const number=document.createElement('span');number.className='number';number.textContent=lastPiece?SIZE:value;tile.appendChild(number);
+        if(lastPiece)tile.disabled=true;else tile.addEventListener('click',()=>tryMove(index));
       }else{
         tile.disabled=true;
       }
@@ -251,7 +254,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     [state[index],state[empty]]=[state[empty],state[index]];
     moves++;updateStats();render();
     if(isSolved()){
-      finished=true;stopClock();sfxWin();messageEl.textContent=`¡Conseguido! ${moves} movimientos en ${formatTime(seconds)}.`;
+      finished=true;render();stopClock();sfxWin();messageEl.textContent=`¡Conseguido! ${moves} movimientos en ${formatTime(seconds)}.`;
     }else messageEl.textContent='';
   }
   function isSolved(){return state.every((v,i)=>v===SOLVED[i])}
