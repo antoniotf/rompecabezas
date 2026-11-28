@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="app-version" content="V09">
+<meta name="app-version" content="V10">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -55,6 +55,27 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 .version{text-align:center;color:var(--muted);opacity:.55;font-size:.62rem;margin:10px 0 0;letter-spacing:.08em}
 .tile.last{animation:lastIn .9s ease-out both;cursor:default}
 @keyframes lastIn{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
+
+.wide{grid-column:1/-1}
+#records{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:#071018ee;padding:calc(env(safe-area-inset-top) + 12px) 12px calc(env(safe-area-inset-bottom) + 12px)}
+#records .panel{width:min(100%,460px);max-height:100%;overflow:auto;background:var(--panel);border:1px solid #30414e;border-radius:16px;padding:16px;box-shadow:0 16px 38px #000a}
+#records h2{margin:0 0 10px;font-size:1.25rem;text-align:center}
+.rec-who{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;font-size:.92rem;color:var(--muted)}
+.rec-who strong{color:var(--text)}
+.rec-who button{min-height:36px;padding:6px 10px;font-size:.82rem}
+#nickEdit{display:none;margin-bottom:12px}
+#nickEdit p{margin:0 0 8px;color:var(--muted);font-size:.9rem;line-height:1.4}
+#nickInput{width:100%;font:inherit;font-size:16px;color:var(--text);background:#101820;border:1px solid #405563;border-radius:12px;padding:12px;margin-bottom:8px}
+#nickEdit .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#nickHint{min-height:18px;color:#ffb4a8;font-size:.82rem;margin:0 0 6px}
+#recTable{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+#recTable th{color:var(--muted);font-size:.7rem;letter-spacing:.08em;text-align:left;padding:4px 6px;border-bottom:1px solid #30414e}
+#recTable td{padding:9px 6px;border-bottom:1px solid #2a3a46;font-size:.95rem}
+#recTable td.pos{width:2.2em;color:var(--accent);font-weight:700}
+#recTable td.nick{max-width:9.5em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#recTable th.num,#recTable td.num{text-align:right}
+#recStatus{min-height:20px;text-align:center;color:var(--muted);font-size:.88rem;margin:10px 0 2px}
+#recNote{text-align:center;color:var(--accent);font-size:.85rem;min-height:18px;margin:0 0 8px}
 </style>
 </head>
 <body>
@@ -76,10 +97,28 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 <button id="sound" type="button" aria-pressed="true">♫ Sonido: ON</button>
 <label class="file-label" for="photo">＋ Elegir fotografía del móvil</label>
 <input id="photo" type="file" accept="image/*">
+<button class="wide" id="recordsBtn" type="button">🏆 Tabla de récords</button>
 <button class="primary" id="newGame" type="button">Nueva partida</button>
 </div>
 <p class="version" id="version"></p>
 </main>
+
+<div id="records" role="dialog" aria-modal="true" aria-label="Tabla de récords">
+<div class="panel">
+<h2>🏆 Récords mundiales</h2>
+<div class="rec-who" id="recWho"><span>Jugador: <strong id="recNick"></strong></span><button id="changeNick" type="button">Cambiar seudónimo</button></div>
+<div id="nickEdit">
+<p id="nickText">Elige un seudónimo para aparecer en la clasificación (entre 2 y 20 caracteres).</p>
+<input id="nickInput" type="text" maxlength="20" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Tu seudónimo">
+<p id="nickHint"></p>
+<div class="row"><button id="nickCancel" type="button">Cancelar</button><button class="primary" id="nickSave" type="button" style="grid-column:auto">Guardar</button></div>
+</div>
+<div id="recNote"></div>
+<table id="recTable"><thead><tr><th>#</th><th>SEUDÓNIMO</th><th class="num">TIEMPO</th><th class="num">MOV.</th></tr></thead><tbody id="recBody"></tbody></table>
+<div id="recStatus"></div>
+<div class="controls" style="margin-top:8px"><button class="wide" id="recClose" type="button">Cerrar</button></div>
+</div>
+</div>
 <script>
 (() => {
   // ---- Versión y anti-caché ----
@@ -254,7 +293,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     [state[index],state[empty]]=[state[empty],state[index]];
     moves++;updateStats();render();
     if(isSolved()){
-      finished=true;render();stopClock();sfxWin();messageEl.textContent=`¡Conseguido! ${moves} movimientos en ${formatTime(seconds)}.`;
+      finished=true;render();stopClock();sfxWin();messageEl.textContent=`¡Conseguido! ${moves} movimientos en ${formatTime(seconds)}.`;onWin();
     }else messageEl.textContent='';
   }
   function isSolved(){return state.every((v,i)=>v===SOLVED[i])}
@@ -410,6 +449,152 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
       button.disabled=false;
     }
   }
+
+
+  // ---- Tabla de récords mundial (Cloudflare Worker + D1) ----
+  const API_URL='https://rompecabezas-api.antoniodelgado.workers.dev';
+  const NICK_KEY='rompecabezas_seudonimo', PENDING_KEY='rompecabezas_pendiente';
+  let nickMem='', pendMem=null;      // copia en memoria por si localStorage no está disponible
+  const recEl=document.getElementById('records');
+  const recBody=document.getElementById('recBody');
+  const recStatus=document.getElementById('recStatus');
+  const recNote=document.getElementById('recNote');
+  const nickEdit=document.getElementById('nickEdit');
+  const nickInput=document.getElementById('nickInput');
+  const nickHint=document.getElementById('nickHint');
+
+  function cleanNick(s){return String(s||'').replace(/[\u0000-\u001f\u007f<>]/g,'').trim().replace(/\s+/g,' ')}
+  function getNick(){
+    let n='';try{n=cleanNick(localStorage.getItem(NICK_KEY))}catch(e){}
+    if(!n)n=nickMem;
+    return(n.length>=2&&n.length<=20)?n:'';
+  }
+  function setNick(n){nickMem=n;try{localStorage.setItem(NICK_KEY,n)}catch(e){}}
+  function getPending(){
+    try{
+      const p=JSON.parse(localStorage.getItem(PENDING_KEY)||'null');
+      if(p&&Number.isInteger(p.t)&&Number.isInteger(p.m))return p;
+    }catch(e){}
+    return pendMem;
+  }
+  function setPending(p){
+    pendMem=p;
+    try{p?localStorage.setItem(PENDING_KEY,JSON.stringify(p)):localStorage.removeItem(PENDING_KEY)}catch(e){}
+  }
+  // Solo se guarda el mejor resultado pendiente (menor tiempo; a igualdad, menos movimientos).
+  function addPending(t,m){const o=getPending();if(!o||t<o.t||(t===o.t&&m<o.m))setPending({t,m})}
+  function fmtRecTime(s){return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
+
+  async function postRecord(nick,t,m){
+    const ctl=new AbortController(), to=setTimeout(()=>ctl.abort(),8000);
+    try{
+      const r=await fetch(API_URL+'/records',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({nickname:nick,time_seconds:t,moves:m}),
+        signal:ctl.signal
+      });
+      if(r.ok)return 'ok';
+      if(r.status===429||r.status>=500)return 'retry';
+      return 'rejected';
+    }catch(e){return 'retry'}
+    finally{clearTimeout(to)}
+  }
+  let flushing=false;
+  // Envía el resultado pendiente (si hay seudónimo). Devuelve 'ok', 'retry', 'rejected' o null.
+  async function flushPending(){
+    const nick=getNick(), p=getPending();
+    if(!nick||!p||flushing)return null;
+    flushing=true;
+    try{
+      const res=await postRecord(nick,p.t,p.m);
+      if(res==='ok'||res==='rejected')setPending(null);   // si falla la conexión, se conserva para reintentar
+      return res;
+    }finally{flushing=false}
+  }
+  // Se llama al resolver el rompecabezas. No pregunta nada ni interrumpe la partida.
+  async function onWin(){
+    addPending(seconds,moves);
+    if(!getNick()){
+      messageEl.textContent+=' Se enviará a la clasificación cuando entres en la tabla de récords.';
+      return;
+    }
+    const res=await flushPending();
+    if(!finished)return;
+    if(res==='ok')messageEl.textContent+=' Enviado a la clasificación.';
+    else if(res==='retry')messageEl.textContent+=' Sin conexión con la clasificación: se reintentará más tarde.';
+    else if(res==='rejected')messageEl.textContent+=' La clasificación no aceptó este resultado.';
+  }
+
+  async function loadTable(){
+    recStatus.textContent='Cargando…';
+    try{
+      const r=await fetch(API_URL+'/records',{cache:'no-store'});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const data=await r.json();
+      const rows=(data.records||[]).slice(0,10);     // máximo 10, también en el juego
+      recBody.textContent='';
+      rows.forEach((rec,i)=>{
+        const tr=document.createElement('tr');
+        [[i+1,'pos'],[rec.nickname,'nick'],[fmtRecTime(rec.time_seconds),'num'],[rec.moves,'num']].forEach(([txt,cls])=>{
+          const td=document.createElement('td');td.className=cls;td.textContent=txt;tr.appendChild(td);
+        });
+        recBody.appendChild(tr);
+      });
+      recStatus.textContent=rows.length?'':'Aún no hay resultados. ¡Sé el primero!';
+    }catch(e){
+      console.warn('Clasificación:',e);
+      recBody.textContent='';
+      recStatus.textContent='No se pudo cargar la clasificación. Comprueba la conexión.';
+    }
+  }
+  async function refreshRecords(){
+    recNote.textContent='';
+    recStatus.textContent='Cargando…';
+    const p=getPending();
+    const res=await flushPending();
+    if(res==='ok'&&p)recNote.textContent='Tu resultado ('+fmtRecTime(p.t)+', '+p.m+' mov.) se ha enviado.';
+    else if(res==='retry')recNote.textContent='Tu resultado sigue pendiente de enviar.';
+    else if(res==='rejected')recNote.textContent='La clasificación no aceptó tu resultado pendiente.';
+    await loadTable();
+  }
+  function showNickEdit(isChange){
+    nickEdit.style.display='block';
+    document.getElementById('recWho').style.display='none';
+    document.getElementById('nickText').textContent=isChange
+      ?'Nuevo seudónimo (entre 2 y 20 caracteres). Tus récords anteriores conservan el que tenías.'
+      :'Elige un seudónimo para aparecer en la clasificación (entre 2 y 20 caracteres).';
+    nickInput.value=isChange?getNick():'';
+    nickHint.textContent='';
+    nickInput.focus();
+  }
+  function hideNickEdit(){
+    nickEdit.style.display='none';
+    document.getElementById('recWho').style.display='flex';
+    document.getElementById('recNick').textContent=getNick();
+  }
+  function openRecords(){
+    sfxClick();
+    recEl.style.display='flex';
+    recBody.textContent='';recStatus.textContent='';recNote.textContent='';
+    if(!getNick())showNickEdit(false);
+    else{hideNickEdit();refreshRecords()}
+  }
+  function closeRecords(){recEl.style.display='none'}
+  function saveNick(){
+    const n=cleanNick(nickInput.value);
+    if(n.length<2||n.length>20){nickHint.textContent='Escribe entre 2 y 20 caracteres.';return}
+    setNick(n);hideNickEdit();refreshRecords();
+  }
+  document.getElementById('recordsBtn').addEventListener('click',openRecords);
+  document.getElementById('recClose').addEventListener('click',()=>{sfxClick();closeRecords()});
+  document.getElementById('changeNick').addEventListener('click',()=>{sfxClick();showNickEdit(true)});
+  document.getElementById('nickSave').addEventListener('click',saveNick);
+  document.getElementById('nickCancel').addEventListener('click',()=>{
+    if(getNick()){hideNickEdit();refreshRecords()}else closeRecords();
+  });
+  nickInput.addEventListener('keydown',e=>{if(e.key==='Enter')saveNick()});
+  recEl.addEventListener('click',e=>{if(e.target===recEl)closeRecords()});
 
   // Al abrir la página, el puzzle ya empieza mezclado (sin sonido, el navegador lo bloquea hasta el primer toque).
   shuffle(true);
