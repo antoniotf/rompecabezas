@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="app-version" content="V13">
+<meta name="app-version" content="V14">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -15,6 +15,7 @@
   document.documentElement.style.visibility='hidden';
   p.delete('v');p.set('t',now);
   location.replace(location.pathname+'?'+p.toString()+location.hash);
+  setTimeout(function(){document.documentElement.style.visibility='';},3000);
 }catch(e){}})();
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -95,8 +96,9 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 @keyframes blink{50%{opacity:0}}
 #recPicWrap{display:none;container-type:size}
 .start #recPicWrap{display:flex;flex:1 1 0;min-height:70px;align-items:center;justify-content:center;margin:2px 0 14px}
-#recPic{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(4,1fr);gap:2px;background:#3a3a3a;border:2px solid #3a3a3a;box-sizing:border-box;height:28vh;width:21vh;height:min(100cqh,60vw);width:calc(min(100cqh,60vw) * .75)}
+#recPic{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(4,1fr);gap:2px;background:#3a3a3a;border:2px solid #3a3a3a;box-sizing:border-box;height:28vh;width:21vh;height:min(100cqh,72vw);width:calc(min(100cqh,72vw) * .75)}
 #recPic div{background-color:#000;background-repeat:no-repeat}
+#records .rec-ctl{margin-left:0;margin-right:0;max-width:none;width:100%}
 .start #recClose{color:#e8cf9a;border-color:#e8cf9a;min-height:54px;font-size:1em}
 </style>
 </head>
