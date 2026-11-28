@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="app-version" content="V11">
+<meta name="app-version" content="V12">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -88,12 +88,17 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 #recBody tr:nth-child(5n+2){color:#f2f2f2}
 #recBody tr:nth-child(5n+3){color:#6fa8ff}
 #recBody tr:nth-child(5n+4){color:#ff8c1a}
-#recBody tr:nth-child(5n+5){color:#ffe500}
+#recBody tr:nth-child(5n+5){color:#4be04b}
 #recStatus{min-height:16px;text-align:center;color:#fff;line-height:1.9;margin:10px 0 4px}
 #recNote{text-align:center;color:#6fa8ff;line-height:1.9;min-height:16px;margin:0 0 12px;font-size:.9em}
-.rec-foot{text-align:center;color:#ffe500;margin:14px 0 16px}
+.rec-foot{text-align:center;color:#f2f2f2;margin:14px 0 16px}
 .blink{animation:blink 1s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
+#recPic{display:none;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(4,1fr);gap:2px;background:#3a3a3a;border:2px solid #3a3a3a;aspect-ratio:3/4;width:clamp(110px,calc((100vh - 480px) * .75),240px);max-width:56%;margin:2px auto 16px}
+#recPic div{background-color:#000;background-repeat:no-repeat}
+.start #recPic{display:grid}
+.start .rec-who{display:none}
+.start #recClose{color:#e8cf9a;border-color:#e8cf9a;min-height:54px;font-size:1em}
 </style>
 </head>
 <body>
@@ -123,6 +128,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
 
 <div id="records" role="dialog" aria-modal="true" aria-label="Tabla de récords">
 <div class="panel">
+<div id="recPic" aria-hidden="true"></div>
 <div class="rec-hi"><span>MEJOR TIEMPO</span><b id="recHi">--:--</b></div>
 <h2>LOS 10 MEJORES</h2>
 <div class="rec-who" id="recWho"><span>JUGADOR: <strong id="recNick"></strong></span><button id="changeNick" type="button">Cambiar</button></div>
@@ -303,6 +309,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
       }
       boardEl.appendChild(tile);
     });
+    renderStartPreview();
   }
   function tryMove(index){
     if(finished)return;
@@ -604,7 +611,34 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     if(!getNick())showNickEdit(false);
     else{hideNickEdit();refreshRecords()}
   }
-  function closeRecords(){recEl.style.display='none'}
+  // ---- Pantalla de inicio: muestra el puzzle ya mezclado, el top 10 y el botón JUGAR ----
+  let startMode=false;
+  const picEl=document.getElementById('recPic');
+  const recCloseBtn=document.getElementById('recClose');
+  function renderStartPreview(){
+    if(!startMode)return;
+    picEl.textContent='';
+    state.forEach(v=>{
+      const d=document.createElement('div');
+      if(v!==0){
+        const o=v-1,row=Math.floor(o/COLS),col=o%COLS;
+        d.style.backgroundImage=`url("${imageUrl}")`;
+        d.style.backgroundSize=`${COLS*100}% ${ROWS*100}%`;
+        d.style.backgroundPosition=`${col/(COLS-1)*100}% ${row/(ROWS-1)*100}%`;
+      }
+      picEl.appendChild(d);
+    });
+  }
+  function openStart(){
+    startMode=true;panelEl.classList.add('start');recCloseBtn.textContent='JUGAR';
+    recEl.style.display='flex';
+    recBody.textContent='';recStatus.textContent='';recNote.textContent='';
+    renderStartPreview();refreshRecords();
+  }
+  function closeRecords(){
+    recEl.style.display='none';
+    if(startMode){startMode=false;panelEl.classList.remove('start');recCloseBtn.textContent='Cerrar'}
+  }
   function saveNick(){
     const n=cleanNick(nickInput.value);
     if(n.length<2||n.length>20){nickHint.textContent='Escribe entre 2 y 20 caracteres.';return}
@@ -618,10 +652,11 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events
     if(getNick()){hideNickEdit();refreshRecords()}else closeRecords();
   });
   nickInput.addEventListener('keydown',e=>{if(e.key==='Enter')saveNick()});
-  recEl.addEventListener('click',e=>{if(e.target===recEl)closeRecords()});
+  recEl.addEventListener('click',e=>{if(e.target===recEl&&!startMode)closeRecords()});
 
   // Al abrir la página, el puzzle ya empieza mezclado (sin sonido, el navegador lo bloquea hasta el primer toque).
   shuffle(true);
+  openStart();
   // Al abrir, intenta cargar una foto aleatoria de GitHub. Si falla, conserva la imagen integrada.
   (async()=>{
     try{
